@@ -1,0 +1,87 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore: ['**.md', 'docs/**']  # 文档变更不触发构建
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 用于创建 release 和 tag
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史，用于版本比较
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # ==========每次commit都打包JAR ==========
+      - name: Build JAR
+        run: mvn clean package -DskipTests
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jar-artifact
+          path: target/*.jar
+          retention-days: 30
+
+      # ==========检测版本变化并发布Release ==========
+      - name: Check version change
+        id: check_version
+        run: |
+          # 获取当前版本
+          CURRENT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+          # 获取上一个版本的tag（如果存在）
+          git fetch --tags
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          # 检查是否已存在该版本的tag
+          if git rev-parse "v$CURRENT_VERSION" >/dev/null 2>&1; then
+            echo "Version $CURRENT_VERSION already tagged. Skipping release."
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "New version detected: $CURRENT_VERSION"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
+      # 创建 Git Tag
+      - name: Create Tag
+        if: steps.check_version.outputs.should_release == 'true'
+        run: |
+          VERSION="${{ steps.check_version.outputs.current_version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "Release version $VERSION"
+          git push origin "v$VERSION"
+
+      # 创建 GitHub Release
+      - name: Create Release
+        if: steps.check_version.outputs.should_release == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.check_version.outputs.current_version }}
+          name: Release v${{ steps.check_version.outputs.current_version }}
+          body: |
+            ## Changes
+            ${{ steps.changelog.outputs.changelog }}
+
+            ## Artifacts
+            - JAR file attached below
+          files: target/*.jar
+          draft: false
+          prerelease: ${{ contains(steps.check_version.outputs.current_version, 'SNAPSHOT') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

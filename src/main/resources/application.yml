@@ -1,0 +1,11 @@
+jwt:
+  secret: K5U7R6C5T9X8Q0X7R5V8V2Z1B5W4J0F3
+  expiration: 3600000
+spring:
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+    url: jdbc:sqlite:file:data.db
+  jpa:
+    hibernate:
+      ddl-auto: update  # 自动创建/更新表结构（开发环境用，生产建议用none）
+    database-platform: org.hibernate.community.dialect.SQLiteDialect

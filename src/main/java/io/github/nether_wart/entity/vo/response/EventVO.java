@@ -9,10 +9,10 @@ public class EventVO {
     user.left-> String
     error-> io.github.nether_wart.entity.vo.response.events.ErrorVO
     */
-    public Object body;
+    public Object data;
 
-    public EventVO(String type, Object body) {
+    public EventVO(String type, Object data) {
         this.type = type;
-        this.body = body;
+        this.data = data;
     }
 }
